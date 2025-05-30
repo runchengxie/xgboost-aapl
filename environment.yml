@@ -1,0 +1,21 @@
+name: stock_predict
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  # data wrangling
+  - pandas>=2.0
+  - numpy>=1.26
+  # modelling
+  - scikit-learn>=1.4
+  - xgboost>=2.0
+  # technical indicators
+  - pandas-ta>=0.3
+  # data source
+  # visualisation / notebooks (optional but handy)
+  - jupyterlab
+  - matplotlib
+  - seaborn
+  - pip:
+    - tushare
