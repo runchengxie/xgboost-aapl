@@ -7,6 +7,7 @@ dependencies:
   # data wrangling
   - pandas>=2.0
   - numpy>=1.26
+  - pyarrow  # Added for Parquet
   # modelling
   - scikit-learn>=1.4
   - xgboost>=2.0
