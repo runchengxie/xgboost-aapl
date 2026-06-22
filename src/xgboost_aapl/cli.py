@@ -68,6 +68,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--config", type=str, default="",
         help="Path to YAML config file",
     )
+    parser.add_argument(
+        "--data-source", type=str, default="tushare",
+        choices=["tushare", "alpaca"],
+        help="Data provider: tushare or alpaca",
+    )
+    parser.add_argument(
+        "--symbols", type=str, default="",
+        help="Comma-separated symbols for multi-symbol mode (e.g. AAPL,MSFT,GOOGL)",
+    )
+    parser.add_argument(
+        "--timeframe", type=str, default="1Day",
+        choices=["1Min", "5Min", "15Min", "30Min", "1Hour", "1Day"],
+        help="Bar granularity for Alpaca (default: 1Day)",
+    )
     return parser.parse_args(argv)
 
 
@@ -126,13 +140,20 @@ def main(argv: list[str] | None = None) -> None:
         print(f"[config] Loaded YAML: {args.config}")
 
     # --- Settings ---
+    symbols = [args.symbol]
+    if args.symbols:
+        symbols = [s.strip() for s in args.symbols.split(",") if s.strip()]
+
     settings = Settings(
-        symbol=args.symbol or yaml_overrides.get("symbol", "AAPL"),
+        data_source=args.data_source,
+        symbol=symbols[0],
+        symbols=symbols,
         start_date=args.start_date or yaml_overrides.get("start_date", ""),
         end_date=args.end_date or yaml_overrides.get("end_date", ""),
         lookback_days=args.lookback_days,
         up_threshold=args.threshold,
         test_size=args.test_size,
+        timeframe=args.timeframe,
     )
     purge_days = args.purge_days
     embargo_days = args.embargo_days
@@ -141,7 +162,10 @@ def main(argv: list[str] | None = None) -> None:
     if not args.embargo_days and "embargo_days" in yaml_overrides:
         embargo_days = yaml_overrides["embargo_days"]
 
-    print(f"Experiment: {settings.symbol}")
+    print(f"Experiment: {', '.join(symbols)}")
+    print(f"  Data source: {settings.data_source}")
+    if settings.data_source == "alpaca":
+        print(f"  Timeframe  : {settings.timeframe}")
     print(f"  Date range : {settings.start_date} - {settings.end_date}")
     print(f"  Threshold  : {settings.up_threshold:.3f}")
     print(f"  Test size  : {settings.test_size:.0%}")
@@ -149,8 +173,20 @@ def main(argv: list[str] | None = None) -> None:
     print(f"  CV embargo : {embargo_days} day(s)")
 
     # --- 1. Load data ---
-    df = load_data(settings)
-    print(f"  Raw rows   : {len(df)}")
+    if settings.data_source == "alpaca":
+        from .data_alpaca import alpaca_daily_to_ts_format, load_alpaca_data
+
+        df = load_alpaca_data(
+            symbols=settings.symbols,
+            start_date=settings.start_date_iso,
+            end_date=settings.end_date_iso,
+            timeframe=settings.timeframe,
+        )
+        df = alpaca_daily_to_ts_format(df)
+        print(f"  Raw rows   : {len(df)} ({df['symbol'].nunique()} symbols)")
+    else:
+        df = load_data(settings)
+        print(f"  Raw rows   : {len(df)}")
 
     # --- 2. Features ---
     df = build_features(df)

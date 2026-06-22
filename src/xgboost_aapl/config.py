@@ -16,10 +16,14 @@ class Settings:
     """
 
     # --- Data ---
-    symbol: str = "AAPL"
-    start_date: str = ""  # YYYYMMDD; empty → compute from lookback_days
-    end_date: str = ""    # YYYYMMDD; empty → today
+    data_source: str = "tushare"  # "tushare" | "alpaca"
+    symbol: str = "AAPL"          # single-symbol (backward compat)
+    symbols: list[str] = field(default_factory=lambda: ["AAPL"])  # multi-symbol
+    start_date: str = ""          # YYYYMMDD; empty → compute from lookback_days
+    end_date: str = ""            # YYYYMMDD; empty → today
     lookback_days: int = 5 * 365
+    timeframe: str = "1Day"       # Alpaca: 1Min, 5Min, 15Min, 1Hour, 1Day
+    alpaca_feed: str = "iex"      # Alpaca data feed: "iex" (free) or "sip" (paid)
 
     # --- Cache ---
     cache_dir: Path = Path(".cache")
@@ -52,6 +56,15 @@ class Settings:
             object.__setattr__(self, "start_date", start.strftime("%Y%m%d"))
         if not self.end_date:
             object.__setattr__(self, "end_date", datetime.now().strftime("%Y%m%d"))
+
+    @property
+    def start_date_iso(self) -> str:
+        """YYYYMMDD → YYYY-MM-DD for Alpaca API."""
+        return f"{self.start_date[:4]}-{self.start_date[4:6]}-{self.start_date[6:8]}"
+
+    @property
+    def end_date_iso(self) -> str:
+        return f"{self.end_date[:4]}-{self.end_date[4:6]}-{self.end_date[6:8]}"
 
     @property
     def cache_file(self) -> Path:

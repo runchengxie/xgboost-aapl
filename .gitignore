@@ -241,7 +241,9 @@ data_cache.parquet
 
 # Secrets & env
 .env
-.env.*
+.env.local
+.envrc
+# .env.example and .envrc.example are committed intentionally
 
 # Test artifacts
 .pytest_cache/

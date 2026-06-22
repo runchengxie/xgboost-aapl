@@ -1,0 +1,5 @@
+export TUSHARE_API_KEY=***
+export ALPACA_API_KEY=***
+export ALPACA_SECRET_KEY=***
+export ALPACA_BASE_URL=https://paper-api.alpaca.markets/v2
+export ALPACA_DATA_URL=https://data.alpaca.markets/v2
