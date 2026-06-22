@@ -27,12 +27,11 @@ xgboost-aapl/
 │   ├── runbook.md        # 运行手册、配置、调试
 │   └── roadmap.md        # 未来优化方向
 ├── pyproject.toml        # 项目元数据、依赖、Ruff、Pyright、Pytest 配置
+├── uv.lock               # 锁定的依赖版本
 ├── .pre-commit-config.yaml
 ├── .gitignore
 ├── LICENSE               # MIT
-├── README.md
-├── environment.yml       # Conda 运行环境（精简）
-└── environment-dev.yml   # Conda 开发环境（含 Jupyter、测试、lint）
+└── README.md
 ```
 
 ## 快速开始
@@ -41,15 +40,8 @@ xgboost-aapl/
 
 ```bash
 cd ~/code/xgboost-aapl
-
-# 使用 uv（推荐）
-uv venv
-uv pip install -e ".[dev]"
+uv sync --dev
 source .venv/bin/activate
-
-# 或使用 Conda
-conda env create -f environment-dev.yml
-conda activate stock_predict
 ```
 
 ### 设置 API 密钥
