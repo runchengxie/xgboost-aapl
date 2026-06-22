@@ -71,29 +71,30 @@ python -m xgboost_aapl.cli --symbol MSFT --threshold 0.005 --lookback-days 1095
 ### 输出示例
 
 ```
-📊  Experiment: AAPL
-    Date range: 20210101 - 20260622
-    Threshold : 0.002
-    Test size : 20%
-📥  从 TuShare 获取 AAPL 日线数据 …
-🛠️   特征工程完成。
-✂️   训练集: 1000 行, 测试集: 250 行
-🚂  训练 XGBoost（时间序列交叉验证）…
-    CV Accuracy: 0.523 ± 0.031
-🔍  评估模型…
-==============================
-📊  EVALUATION SUMMARY
-==============================
+Experiment: AAPL
+  Date range: 20210101 - 20260622
+  Threshold : 0.002
+  Test size : 20%
+[cache] 加载缓存数据: .cache/AAPL_20210101_20260622.parquet
+  Raw rows  : 1250
+[features] 特征工程完成。
+[split] 训练集: 1000 行, 测试集: 250 行
+[train] 训练 XGBoost (时间序列交叉验证) ...
+  CV Accuracy: 0.523 +/- 0.031
+[eval] 评估模型 ...
+============================================================
+EVALUATION SUMMARY
+============================================================
   Train Accuracy:        0.541
   Test Accuracy:         0.516
   ROC AUC:               0.512
   Overfitting Gap:       0.025
   Rank IC:               0.018
   ICIR (rolling):        0.312
-  ✅  Low overfitting — good generalisation.
-  ⚠️   Rank IC > 0 but weak — marginal signal.
-  ⚠️   ICIR > 0.3 — modest stability.
-── Baselines ──
+  [OK] Low overfitting -- good generalisation.
+  [WARN] Rank IC > 0 but weak -- marginal signal.
+  [WARN] ICIR > 0.3 -- modest stability.
+-- Baselines --
   Majority                                : 0.544  (model -0.028)
   Persistence (yesterday's direction)     : 0.488  (model +0.028)
 ```
