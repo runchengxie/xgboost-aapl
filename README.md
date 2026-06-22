@@ -1,160 +1,152 @@
 # XGBoost AAPL Stock Prediction
 
-一个使用XGBoost机器学习算法预测苹果公司(AAPL)股票次日涨跌的项目。该模型专注于预测股价是否会在次日上涨≥0.2%。
-
-## 项目概述
-
-本项目使用技术指标和历史价格数据训练XGBoost分类器，预测AAPL股票的短期价格走势。模型采用时间序列交叉验证来确保预测的可靠性。
-
-### 主要特性
-
-- 二元分类: 预测次日股价是否上涨≥0.2%
-- 技术指标: 使用SMA、RSI、MACD等多种技术分析指标
-- 时间序列验证: 采用TimeSeriesSplit进行交叉验证
-- 数据缓存: 自动缓存历史数据，避免重复下载
-- 防过拟合: 使用正则化和保守的超参数设置
-
-## 环境设置
-
-### 前置要求
-
-- Python 3.11+
-- Conda 或 Miniconda
-- Tushare API密钥
-
-### 安装步骤
-
-1. 克隆仓库
-   ```bash
-   git clone <repository-url>
-   cd xgboost-aapl
-   ```
-
-2. 创建Conda环境
-   ```bash
-   conda env create -f environment.yml
-   conda activate stock_predict
-   ```
-
-3. 设置API密钥
-   
-   获取Tushare API密钥：
-   - 访问 [Tushare官网](https://tushare.pro/)
-   - 注册账户并获取API密钥
-   
-   设置环境变量：
-   ```bash
-   # Windows (PowerShell)
-   $env:TUSHARE_API_KEY="your_api_key_here"
-   
-   # Windows (CMD)
-   set TUSHARE_API_KEY=your_api_key_here
-   
-   # Linux/Mac
-   export TUSHARE_API_KEY="your_api_key_here"
-   ```
-
-## 使用方法
-
-### 基本运行
-
-```bash
-python main.py
-```
-
-### 运行流程
-
-1. 数据获取: 自动下载AAPL过去5年的日线数据
-2. 特征工程: 计算技术指标和衍生特征
-3. 模型训练: 使用时间序列交叉验证训练XGBoost模型
-4. 模型评估: 在测试集上评估模型性能
-5. 结果分析: 输出详细的性能指标和特征重要性
-
-## 技术指标
-
-模型使用以下技术指标作为特征：
-
-- 简单移动平均线 (SMA): 5日、10日、20日
-- SMA变化率: 各周期SMA的日变化率
-- 相对强弱指数 (RSI): 14日RSI
-- MACD柱状图: MACD直方图值
-- 成交量比率: 当日成交量与5日平均成交量的比值
-- 成交量: 原始成交量数据
-
-## 模型配置
-
-### XGBoost超参数
-
-```python
-XGB_PARAMS = {
-    'n_estimators': 200,        # 树的数量
-    'learning_rate': 0.01,      # 学习率
-    'max_depth': 3,             # 最大树深度
-    'subsample': 0.7,           # 样本采样率
-    'colsample_bytree': 0.7,    # 特征采样率
-    'reg_alpha': 1.0,           # L1正则化
-    'reg_lambda': 1.0,          # L2正则化
-    'objective': 'binary:logistic',
-    'eval_metric': 'logloss',
-    'random_state': 42
-}
-```
-
-### 关键参数
-
-- 预测阈值: 0.2% (UP_THRESHOLD = 0.002)
-- 测试集比例: 20% (TEST_SIZE = 0.2)
-- 数据范围: 过去5年的历史数据
-- 交叉验证: 5折时间序列交叉验证
-
-## 输出结果
-
-运行后将显示：
-
-1. 交叉验证结果: CV准确率和标准差
-2. 测试集性能: 分类报告和准确率
-3. 训练集性能: 用于检测过拟合
-4. 特征重要性: 各特征对预测的贡献度
-5. 模型诊断: 过拟合检测和性能总结
+使用 XGBoost 预测股票次日涨跌的时序二分类策略。从原始单文件脚本重构为包结构，支持可测试、可复现、可扩展的实验流程。
 
 ## 项目结构
 
-```
+```text
 xgboost-aapl/
-├── main.py              # 主程序文件
-├── environment.yml      # Conda环境配置
-├── data_cache.parquet   # 缓存的历史数据
-├── README.md           # 项目说明文档
-└── .gitattributes      # Git配置文件
+├── src/xgboost_aapl/
+│   ├── __init__.py       # 包信息，版本号
+│   ├── config.py         # Settings dataclass（不可变配置）
+│   ├── data.py           # 数据加载 + 参数化缓存
+│   ├── features.py       # 自实现技术指标（无 pandas_ta 依赖）
+│   ├── labels.py         # 标签构建（已修复最后一行 target bug）
+│   ├── model.py          # XGBoost 训练 + 时间序列交叉验证
+│   ├── metrics.py        # 评估：baseline、ROC AUC、混淆矩阵、IC/ICIR
+│   └── cli.py            # 命令行入口（argparse）
+├── tests/
+│   ├── test_labels.py    # 标签正确性测试
+│   ├── test_features.py  # 特征工程测试
+│   ├── test_split.py     # 时序切分测试
+│   └── test_cache.py     # 缓存参数化测试
+├── docs/
+│   ├── strategy.md       # 策略算法、特征、标签
+│   ├── validation.md     # 防过拟合、purge/embargo、IC/ICIR、样本外检验
+│   ├── backtest.md       # 回测方法、TCA、walk-forward
+│   ├── runbook.md        # 运行手册、配置、调试
+│   └── roadmap.md        # 未来优化方向
+├── pyproject.toml        # 项目元数据、依赖、Ruff、Pyright、Pytest 配置
+├── .pre-commit-config.yaml
+├── .gitignore
+├── LICENSE               # MIT
+├── README.md
+├── environment.yml       # Conda 运行环境（精简）
+└── environment-dev.yml   # Conda 开发环境（含 Jupyter、测试、lint）
 ```
 
-## 注意事项
+## 快速开始
 
-1. 仅供学习: 本项目仅用于教育和研究目的，不构成投资建议
-2. 数据延迟: Tushare数据可能存在延迟，实际交易请使用实时数据
-3. 市场风险: 股票投资存在风险，过往表现不代表未来收益
-4. 模型局限: 机器学习模型无法预测所有市场情况，请谨慎使用
+### 安装
 
-## 故障排除
+```bash
+cd ~/code/xgboost-aapl
 
-### 常见问题
+# 使用 uv（推荐）
+uv venv
+uv pip install -e ".[dev]"
+source .venv/bin/activate
 
-1. API密钥错误
-   ```
-   ❌ Please set the TUSHARE_API_KEY environment variable first!
-   ```
-   解决方案：检查环境变量设置是否正确
+# 或使用 Conda
+conda env create -f environment-dev.yml
+conda activate stock_predict
+```
 
-2. 数据下载失败
-   - 检查网络连接
-   - 验证API密钥有效性
-   - 确认Tushare账户积分充足
+### 设置 API 密钥
 
-3. 依赖包问题
-   ```bash
-   conda env update -f environment.yml
-   ```
+```bash
+export TUSHARE_API_KEY="your...n### 运行
+
+```bash
+# 默认参数（AAPL，5 年数据）
+python -m xgboost_aapl.cli
+
+# 或通过入口脚本
+xgboost-aapl
+
+# 自定义参数
+python -m xgboost_aapl.cli --symbol MSFT --threshold 0.005 --lookback-days 1095
+```
+
+### 输出示例
+
+```
+📊  Experiment: AAPL
+    Date range: 20210101 - 20260622
+    Threshold : 0.002
+    Test size : 20%
+📥  从 TuShare 获取 AAPL 日线数据 …
+🛠️   特征工程完成。
+✂️   训练集: 1000 行, 测试集: 250 行
+🚂  训练 XGBoost（时间序列交叉验证）…
+    CV Accuracy: 0.523 ± 0.031
+🔍  评估模型…
+==============================
+📊  EVALUATION SUMMARY
+==============================
+  Train Accuracy:        0.541
+  Test Accuracy:         0.516
+  ROC AUC:               0.512
+  Overfitting Gap:       0.025
+  Rank IC:               0.018
+  ICIR (rolling):        0.312
+  ✅  Low overfitting — good generalisation.
+  ⚠️   Rank IC > 0 but weak — marginal signal.
+  ⚠️   ICIR > 0.3 — modest stability.
+── Baselines ──
+  Majority                                : 0.544  (model -0.028)
+  Persistence (yesterday's direction)     : 0.488  (model +0.028)
+```
+
+## 评估指标
+
+| 指标 | 说明 |
+|------|------|
+| Accuracy | 方向预测准确率 |
+| ROC AUC | 排序能力 |
+| Precision / Recall / F1 | 类别平衡评估 |
+| Confusion Matrix | 预测分布 |
+| **Rank IC** | Spearman 相关系数（预测概率 vs 实际收益） |
+| **ICIR** | IC / IC 标准差（滚动窗口），衡量信号稳定性 |
+| Majority baseline | 永远猜多数类 |
+| Persistence baseline | 猜昨日方向延续 |
+
+## 测试
+
+```bash
+pytest                          # 全部测试（14 个）
+pytest tests/test_labels.py     # 只测标签
+```
+
+## 代码质量
+
+```bash
+ruff check .                    # Lint（0 错误）
+ruff format --check .           # 格式检查
+pyright                         # 类型检查（0 错误）
+```
+
+## 文档
+
+详细文档见 `docs/` 目录：
+
+- `docs/strategy.md` — 策略算法、特征设计、模型架构
+- `docs/validation.md` — 防过拟合、purge/embargo、IC/ICIR、样本外检验清单
+- `docs/backtest.md` — 回测框架、TCA 假设、walk-forward
+- `docs/runbook.md` — 运行手册、参数说明、常见问题
+- `docs/roadmap.md` — 未来优化方向和已知局限
+
+## 修复记录（v0.2.0）
+
+- 修复最后一行 target 被错误标记为 0 的 bug
+- 删除 `warnings.filterwarnings("ignore")` 和 `pandas_ta` 依赖
+- 参数化缓存路径（symbol + 日期范围）
+- 添加混淆矩阵、ROC AUC、Majority/Persistence baseline
+- 添加 Rank IC 和 ICIR 指标
+- 添加 Ruff + Pyright + Pytest 配置（全部通过）
+- 从单文件脚本重构为包结构
+- 新增 `docs/` 目录完整文档
 
 ## 许可证
 
-本项目采用MIT许可证，详见LICENSE文件。
+MIT — 详见 LICENSE 文件。
