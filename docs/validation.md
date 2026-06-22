@@ -2,21 +2,22 @@
 
 ## 核心原则
 
-金融时序预测的最大风险不是「模型不准」，而是「看起来准但其实在作弊」。常见作弊方式：
+金融时序预测的最大风险是「看起来准但其实在作弊」。常见作弊方式：
 
-1. **未来信息泄露**（lookahead bias）：训练时用了测试时才有的数据
-2. **过拟合噪音**：模型记住了训练集噪音而非信号
-3. **幸存者偏差**：用全样本统计量做特征标准化
-4. **阈值偷看**：在测试集上调分类阈值，然后报告测试集结果
+1. 未来信息泄露（lookahead bias）：训练时用了测试时才有的数据
+2. 过拟合噪音：模型记住了训练集噪音而非信号
+3. 幸存者偏差：用全样本统计量做特征标准化
+4. 阈值偷看：在测试集上调分类阈值，然后报告测试集结果
 
 本项目采取的防护措施：
 
-## 时序交叉验证（TimeSeriesSplit）
+## 时序交叉验证（PurgedTimeSeriesSplit）
+
+使用 `crossval.py` 中自定义的 `PurgedTimeSeriesSplit`，在标准时序交叉验证基础上增加了 purge 和 embargo 两层保护。
 
 ```
-Fold 1: |████████████|░░░░|              train
-Fold 2: |███████████████████|░░░░|        train
-Fold 3: |██████████████████████████|░░░░|  train
+Fold 1: [train ── purge] || embargo || [test]
+Fold 2: [train ────── purge] || embargo || [test]
         时间 →
 ```
 
@@ -24,33 +25,21 @@ Fold 3: |███████████████████████�
 - 测试集从不参与特征计算
 - 每折模型独立训练
 
-## Purge & Embargo 分析
+## Purge 和 Embargo
 
 ### Purge（清洗）
 
 问题：训练集末尾的样本和测试集开头的样本，其标签可能共享同一笔未来数据。
 
-本项目中，标签 `target[t]` 使用 `close[t+1]`。在标准 `TimeSeriesSplit` 中，fold k 的测试集从 `t_k` 开始，fold k+1 的训练集包含到 `t_{k+1}-1`。
+本项目标签 `target[t]` 使用 `close[t+1]`。特征工程中使用了最长 20 天的滚动窗口（SMA20）。如果训练集末尾和测试集开头之间没有间隔，训练集最后 20 天的样本，其特征计算窗口会延伸到测试集时间范围内，导致信息泄漏。
 
-如果 `t_k` 和 `t_{k+1}` 之间没有间隙，fold k 的测试样本 `t_k` 的标签用到了 `close[t_k+1]`，而这个 `close[t_k+1]` 可能也是 fold k+1 训练集中某样本的特征计算的一部分（如 SMA20 的滚动窗口）。
-
-**当前状态**：未实现显式 purge。由于特征使用 20 日滚动窗口，理论上需要 purge 最近 20 个训练样本。
-
-**建议**：在训练每折前，丢弃训练集末尾最近 `max_window` 天的样本：
-
-```python
-purge_days = 20  # max rolling window
-X_train_fold = X_train_fold.iloc[:-purge_days]
-y_train_fold = y_train_fold.iloc[:-purge_days]
-```
+实现：`PurgedTimeSeriesSplit` 默认 `purge_days=20`，在每折训练前丢弃训练集末尾 20 天数据。可通过 `--purge-days` 调整。
 
 ### Embargo（禁运期）
 
-问题：训练集和测试集之间的间隔不够，导致测试集开头的样本受训练集末尾样本的影响（通过序列自相关）。
+问题：训练集和测试集之间的间隔不够，测试集开头的样本可能通过序列自相关受到训练集末尾样本的影响。
 
-对于日频数据，1-2 天的 embargo 通常足够。本项目标签使用 `shift(-1)`，天然有 1 天间隔，但严格来说应在训练/测试边界加至少 1 天 embargo。
-
-**当前状态**：未实现。`TimeSeriesSplit` 的 gap 参数可配置但本项目未使用。
+对于日频数据，1 天 embargo 通常足够。本项目标签使用 `shift(-1)`，天然有 1 天间隔；此外 `PurgedTimeSeriesSplit` 在训练和测试边界额外设置 1 天间隔。默认 `embargo_days=1`，可通过 `--embargo-days` 调整。
 
 ## 信息系数（IC）
 
@@ -63,8 +52,8 @@ from scipy.stats import spearmanr
 ic, p_value = spearmanr(predictions, actual_returns)
 ```
 
-- > 0.05：有一定预测能力
-- > 0.10：较好的预测能力
+- 大于 0.05：有一定预测能力
+- 大于 0.10：较好的预测能力
 - 负值：预测方向错误
 
 ### ICIR（Information Coefficient IR）
@@ -75,15 +64,19 @@ ICIR = mean(IC) / std(IC)
 
 衡量 IC 的稳定性：
 
-- > 0.5：可接受
-- > 1.0：较好
-- > 2.0：优秀
+- 大于 0.5：可接受
+- 大于 1.0：较好
+- 大于 2.0：优秀
 
-ICIR 比 IC 本身更重要：一个 IC=0.05 但 ICIR=2.0 的策略比 IC=0.10 但 ICIR=0.3 的策略更可靠。
+ICIR 比 IC 本身更重要：一个 IC=0.05 但 ICIR=2.0 的策略，比 IC=0.10 但 ICIR=0.3 的策略更可靠。
 
 ### 实现
 
-代码中已集成 IC/ICIR 计算，运行 `python -m xgboost_aapl.cli` 时自动输出。
+代码中已集成 IC/ICIR 计算（`metrics.py` 的 `compute_ic_icir`），运行 CLI 时自动输出。此外还提供：
+
+- `compute_factor_ic()`：每个特征对 future_return 的 Rank IC
+- `compute_ic_decay()`：IC 衰减曲线（lag 1-20）
+- `compute_factor_correlation()`：特征间相关性矩阵 + 自动标记 |r| 大于 0.8 的高相关对
 
 ## 样本外检验清单
 

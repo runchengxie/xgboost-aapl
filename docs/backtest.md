@@ -2,40 +2,52 @@
 
 ## 回测框架
 
-当前项目是纯模型评估，不产生交易信号。以下描述计划中但尚未实现的回测方法。
+Walk-forward 回测已实现在 `backtest.py`，通过 CLI 的 `--backtest` 选项启用。
 
 ### 信号生成
 
 ```
 signal[t] = 1  当 predict_proba(X[t]) >= threshold
             0  其他
-position[t] = signal[t]  （全仓进出，无仓位管理）
+position[t] = signal[t]（全仓进出，无仓位管理）
 ```
 
 ### 收益计算
 
-```
-strategy_return[t] = position[t-1] * (close[t] / close[t-1] - 1)
-```
+逐笔模拟交易。当信号为买入时，以次日实际收益率扣除交易成本后计算净值变化。
 
 关键假设：
 
-1. 信号在 t-1 收盘后产生，t 开盘执行
-2. 使用次日开盘价还是收盘价取决于执行假设
+1. 信号在当日收盘后产生，次日开盘执行
+2. 使用次日实际收益率（`future_return`）而非次日开盘价
 3. 当前使用收盘价（学术研究中常见，实践中不现实）
+
+### 回测流程
+
+按月度（可配置为周度）重训模型。每个周期：
+
+1. 用该周期之前的所有历史数据训练模型（扣除 purge_days）
+2. 在下一个周期的数据上产生预测和信号
+3. 模拟交易并累加净值
+
+可用参数：
+
+- `--backtest`：启用回测
+- `--backtest-cost-bps`：往返交易成本（bp），默认 5bp
 
 ### 回测指标
 
-| 指标 | 公式 | 含义 |
-|------|------|------|
-| 累计收益 | `cumprod(1 + r) - 1` | 总收益 |
-| 年化收益 | `(1 + total_return)^(252/n_days) - 1` | 年化 |
-| 年化波动 | `std(daily_return) * sqrt(252)` | 风险 |
-| Sharpe | `(annual_return - rf) / annual_vol` | 风险调整收益 |
-| 最大回撤 | `max(peak - trough) / peak` | 尾部风险 |
-| 胜率 | `n_win / n_trades` | 方向准确率 |
-| 盈亏比 | `avg_win / avg_loss` | 赔率 |
-| 换手率 | `n_trades / n_days` | 交易频率 |
+| 指标 | 说明 |
+|------|------|
+| 交易次数 | 总信号数 |
+| 总收益率 | `cumprod(1 + r) - 1` |
+| 年化收益率 | `(1 + total_return)^(252/n_days) - 1` |
+| 年化波动率 | `std(daily_return) * sqrt(252)` |
+| Sharpe | `annual_return / annual_vol`（零无风险利率） |
+| 最大回撤 | `max(peak - trough) / peak` |
+| 胜率 | 正收益交易占比 |
+| 盈亏比 | 总盈利 / 总亏损的绝对值 |
+| 换手率 | 年均交易次数 |
 
 ## 交易成本分析（TCA）
 
@@ -50,7 +62,7 @@ strategy_return[t] = position[t-1] * (close[t] / close[t-1] - 1)
 | 买卖价差 | ~0.01%（1 bp） | AAPL 流动性极高 |
 | 市场冲击 | ~0.02-0.05%（2-5 bp） | 零售订单量小，冲击可忽略 |
 
-**总往返成本估算**：~2-5 bp（0.02%-0.05%）
+总往返成本估算：2-5 bp（0.02%-0.05%）。
 
 对于默认阈值 0.2%（20 bp），交易成本占预期收益的 10%-25%，尚可接受。若阈值降至 0.05%（5 bp），交易成本将严重侵蚀收益。
 
@@ -67,34 +79,10 @@ def estimate_cost(price: float, volume: int, is_large_cap: bool = True) -> float
 
 ### 涨跌停和流动性约束
 
-A 股有涨跌停板，美股无。但美股有熔断机制（仅极端情况）。对于流动性约束：
+A 股有涨跌停板，美股无。当前回测框架未实现涨跌停约束，主要因为数据源以美股为主。如果迁移到 A 股，需要考虑：
 
-1. 如果信号要求买入但当日涨停（A 股）→ 无法成交
-2. 如果成交量不足以容纳仓位 → 部分成交或滑点
-
-## Walk-Forward 回测框架（伪代码）
-
-```python
-def walk_forward_backtest(
-    df, model_class, features, retrain_freq="monthly"
-):
-    results = []
-    for period in split_by_period(df, retrain_freq):
-        train = df[df.index < period.start]
-        test = df[(df.index >= period.start) & (df.index < period.end)]
-        
-        model = model_class()
-        model.fit(train[features], train["target"])
-        test["prob"] = model.predict_proba(test[features])[:, 1]
-        test["signal"] = (test["prob"] >= threshold).astype(int)
-        test["return"] = test["signal"].shift(1) * test["close"].pct_change()
-        
-        results.append(test)
-    
-    return pd.concat(results)
-```
-
-关键：每期用历史数据重新训练，绝不使用未来数据。
+1. 如果信号要求买入但当日涨停，无法成交
+2. 如果成交量不足以容纳仓位，部分成交或滑点
 
 ## TCA 假设总结
 
