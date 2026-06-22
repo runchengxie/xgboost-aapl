@@ -13,7 +13,15 @@ def make_ohlcv(n_rows: int = 200) -> pd.DataFrame:
     rng = np.random.default_rng(42)
     close = 100 + rng.normal(0, 2, n_rows).cumsum()
     vol = rng.integers(1_000_000, 10_000_000, n_rows)
-    df = pd.DataFrame({"close": close, "vol": vol})
+    # Generate open/high/low from close for OHLC-dependent features
+    noise = rng.normal(0, 0.5, n_rows)
+    open_ = close + noise * 0.3
+    high = np.maximum(open_, close) + np.abs(noise) * 0.5
+    low = np.minimum(open_, close) - np.abs(noise) * 0.5
+    df = pd.DataFrame({
+        "open": open_, "high": high, "low": low,
+        "close": close, "vol": vol,
+    })
     df["trade_date"] = pd.date_range("2020-01-01", periods=n_rows, freq="B")
     return df
 

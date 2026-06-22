@@ -1,23 +1,22 @@
 # 未来优化方向
 
-按优先级从高到低排列。
+按优先级从高到低排列。已完成的标记 ✅。
 
 ## P0：验证加强
 
-- [ ] **Purge 实现**：在每折训练前丢弃最近 `max_window` 天的样本
-- [ ] **Embargo 实现**：在训练/测试边界加至少 1 天间隔
-- [ ] **Walk-forward 回测**：逐月重新训练，记录每期收益
-- [ ] **TCA 实际成本**：用次日开盘价计算收益，而非收盘价
+- [x] **Purge 实现**：`crossval.py` — `PurgedTimeSeriesSplit`，每折训练前丢弃 `purge_days` 天
+- [x] **Embargo 实现**：`crossval.py` — `embargo_days` 参数，训练/测试边界预留间隔
+- [x] **Walk-forward 回测**：`backtest.py` — `walk_forward()` 逐月重训，含 TCA
+- [x] **TCA 实际成本**：`backtest.py` — 往返成本 `cost_bps` 参数（默认 5bp）
 
 ## P1：模型改进
 
-- [ ] **阈值优化**：在验证集上调 threshold，不在测试集上试
-- [ ] **特征扩展**：
-  - 波动率特征（ATR、历史波动率）
-  - 价格形态（锤子线、吞没等）
-  - 市场宽度指标（涨跌比）
+- [x] **阈值优化**：`cli.py --optimize-threshold` — 验证集上 grid search 最优阈值
+- [x] **特征扩展**：
+  - 波动率特征（ATR_14、ATR_14_pct、HistVol_20）
+  - 蜡烛形态（body_ratio、upper_shadow_ratio、lower_shadow_ratio）
+- [x] **多模型对比**：`cli.py --compare-models` — XGBoost / LR / RF / LightGBM
 - [ ] **多标的**：从单标的扩展到多标的横向比较
-- [ ] **多模型对比**：Logistic Regression、Random Forest、LightGBM
 - [ ] **概率校准**：`CalibratedClassifierCV` 使概率更准确
 
 ## P2：执行与风控
@@ -29,16 +28,17 @@
 
 ## P3：工程化
 
+- [x] **配置文件**：`config_yaml.py` — YAML 配置文件支持，`cli.py --config`
 - [ ] **实验追踪**：MLflow / W&B 记录每次实验的参数和指标
-- [ ] **配置文件**：支持 YAML/TOML 配置文件替代命令行参数
 - [ ] **数据版本控制**：DVC 管理数据和模型版本
 - [ ] **CI/CD**：GitHub Actions 自动化测试 + 模型验证
 - [ ] **API 服务**：FastAPI 提供实时预测接口
 
 ## P4：量化研究
 
-- [ ] **因子 IC 分析**：每个特征的单独 IC、IC 衰减曲线
-- [ ] **因子相关性矩阵**：检测冗余特征
+- [x] **因子 IC 分析**：`metrics.py — compute_factor_ic()` 每个特征的 Rank IC
+- [x] **因子相关性矩阵**：`metrics.py — compute_factor_correlation()`，自动标记 |r| > 0.8
+- [x] **IC 衰减曲线**：`metrics.py — compute_ic_decay()` lag 1-20
 - [ ] **行业中性**：如果用行业数据，做行业中性化
 - [ ] **市场状态分类**：牛/熊/震荡市分别建模
 - [ ] **另类数据**：新闻情绪、社交媒体、期权数据

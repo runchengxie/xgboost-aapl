@@ -1,4 +1,4 @@
-"""XGBoost model training with time-series cross-validation."""
+"""Model training with time-series cross-validation and multi-model comparison."""
 
 from __future__ import annotations
 
@@ -6,8 +6,62 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import TimeSeriesSplit, cross_val_score
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 from xgboost import XGBClassifier
+
+from .crossval import PurgedTimeSeriesSplit, purged_cross_val_score
+
+# ---------------------------------------------------------------------------
+# Model registry
+# ---------------------------------------------------------------------------
+
+def _make_xgb(params: dict[str, Any]) -> XGBClassifier:
+    return XGBClassifier(**params)
+
+
+def _make_lr(params: dict[str, Any]) -> LogisticRegression:
+    defaults = {"max_iter": 1000, "random_state": params.get("random_state", 42)}
+    return LogisticRegression(**defaults)
+
+
+def _make_rf(params: dict[str, Any]) -> RandomForestClassifier:
+    defaults = {
+        "n_estimators": 200,
+        "max_depth": 5,
+        "random_state": params.get("random_state", 42),
+        "n_jobs": -1,
+    }
+    return RandomForestClassifier(**defaults)
+
+
+def _make_lgb(params: dict[str, Any]) -> Any:
+    """LightGBM — optional dependency."""
+    try:
+        from lightgbm import LGBMClassifier  # type: ignore[import-untyped]
+    except ImportError:
+        return None
+    defaults = {
+        "n_estimators": 200,
+        "learning_rate": 0.01,
+        "max_depth": 3,
+        "random_state": params.get("random_state", 42),
+        "verbose": -1,
+    }
+    return LGBMClassifier(**defaults)
+
+
+MODEL_REGISTRY: dict[str, Any] = {
+    "xgboost": (_make_xgb, True),
+    "logistic": (_make_lr, True),
+    "random_forest": (_make_rf, True),
+    "lightgbm": (_make_lgb, False),  # optional
+}
+
+
+# ---------------------------------------------------------------------------
+# Core training
+# ---------------------------------------------------------------------------
 
 
 def train_model(
@@ -15,24 +69,82 @@ def train_model(
     y_train: pd.Series,
     params: dict[str, Any],
     cv_splits: int = 5,
-) -> tuple[XGBClassifier, dict[str, float]]:
-    """Fit XGBoost with time-series CV, return model and CV stats."""
-    tscv = TimeSeriesSplit(n_splits=cv_splits)
-    cv_scores = cross_val_score(
-        XGBClassifier(**params),
-        X_train,
-        y_train,
-        cv=tscv,
-        scoring="accuracy",
-        n_jobs=-1,
+    purge_days: int = 20,
+    embargo_days: int = 1,
+    model_type: str = "xgboost",
+) -> tuple[Any, dict[str, float]]:
+    """Fit model with purged time-series CV.
+
+    Parameters
+    ----------
+    purge_days : int
+        Samples to drop from end of each training fold.
+        Set to max(window) of rolling features (default 20 for SMA20).
+    embargo_days : int
+        Gap between train and test (default 1 for daily next-day labels).
+    model_type : str
+        One of: xgboost, logistic, random_forest, lightgbm.
+    """
+    maker, _ = MODEL_REGISTRY[model_type]
+    estimator = maker(params)
+
+    cv = PurgedTimeSeriesSplit(
+        n_splits=cv_splits,
+        purge_days=purge_days,
+        embargo_days=embargo_days,
     )
 
-    model = XGBClassifier(**params)
+    cv_scores = purged_cross_val_score(
+        estimator,
+        X_train.values,
+        y_train.values.astype(float),  # type: ignore[arg-type]
+        cv,
+        scoring="accuracy",
+    )
+
+    # Fit final model on all training data
+    model = maker(params)
     model.fit(X_train, y_train)
 
     cv_stats = {
         "mean": float(np.mean(cv_scores)),
-        "std": float(np.std(cv_scores)),
+        "std": float(np.std(cv_scores, ddof=1)),
         "scores": [float(s) for s in cv_scores],
+        "n_folds": len(cv_scores),
     }
     return model, cv_stats
+
+
+def compare_models(
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    params: dict[str, Any],
+    cv_splits: int = 5,
+    purge_days: int = 20,
+    embargo_days: int = 1,
+) -> list[dict[str, Any]]:
+    """Train and compare all available models.
+
+    Returns a list of dicts with model_name, cv_mean, cv_std, model.
+    """
+    results: list[dict[str, Any]] = []
+    for name, (_maker_fn, _required) in MODEL_REGISTRY.items():
+        try:
+            model, cv_stats = train_model(
+                X_train, y_train,
+                params=params,
+                cv_splits=cv_splits,
+                purge_days=purge_days,
+                embargo_days=embargo_days,
+                model_type=name,
+            )
+            results.append({
+                "model_name": name,
+                "cv_mean": cv_stats["mean"],
+                "cv_std": cv_stats["std"],
+                "model": model,
+            })
+        except Exception:
+            continue
+    results.sort(key=lambda r: r["cv_mean"], reverse=True)
+    return results

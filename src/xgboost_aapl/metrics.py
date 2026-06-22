@@ -258,3 +258,94 @@ def print_report(report: dict[str, Any]) -> None:
         print("\n-- Feature Importance --")
         for feat, imp in report["feature_importance"].items():
             print(f"  {feat:<25}: {imp:.3f}")
+
+    # Factor IC
+    factor_ic = report.get("factor_ic", {})
+    if factor_ic:
+        print("\n-- Factor IC Analysis --")
+        print(f"  {'Feature':<25} {'Rank IC':>8}  {'Abs IC':>8}")
+        for feat, ic_val in sorted(factor_ic.items(), key=lambda x: abs(x[1]), reverse=True):
+            print(f"  {feat:<25} {ic_val:>8.3f}  {abs(ic_val):>8.3f}")
+
+    # Factor correlation (top warnings only)
+    warnings = report.get("factor_correlation_warnings", [])
+    if warnings:
+        print("\n-- High Factor Correlations (|r| > 0.8) --")
+        for w in warnings:
+            print(f"  {w}")
+
+
+# ---------------------------------------------------------------------------
+# Factor IC analysis
+# ---------------------------------------------------------------------------
+
+
+def compute_factor_ic(
+    df: pd.DataFrame,
+    feature_cols: list[str],
+    return_col: str = "future_return",
+) -> dict[str, float]:
+    """Compute per-feature Rank IC (Spearman correlation with future returns).
+
+    Returns dict mapping feature name to IC value.
+    """
+    result: dict[str, float] = {}
+    valid = df.dropna(subset=[return_col, *feature_cols])
+    if len(valid) < 30:
+        return {}
+
+    for feat in feature_cols:
+        if feat not in valid.columns:
+            continue
+        sr = spearmanr(valid[feat], valid[return_col])
+        result[feat] = float(sr.correlation)  # type: ignore[arg-type]
+    return result
+
+
+def compute_ic_decay(
+    df: pd.DataFrame,
+    feature_cols: list[str],
+    max_lag: int = 20,
+) -> dict[str, list[float]]:
+    """Compute IC decay: rank correlation of each feature with returns at
+    successive forward horizons.
+
+    Returns dict mapping feature name to list of IC values for lags 1..max_lag.
+    """
+    result: dict[str, list[float]] = {}
+    close = df["close"]
+    for feat in feature_cols:
+        if feat not in df.columns:
+            continue
+        ics: list[float] = []
+        for lag in range(1, max_lag + 1):
+            fwd_ret = close.shift(-lag) / close - 1.0
+            valid = pd.DataFrame({"f": df[feat], "r": fwd_ret}).dropna()
+            if len(valid) < 30:
+                ics.append(float("nan"))
+            else:
+                r = spearmanr(valid["f"], valid["r"])
+                ics.append(float(r.correlation))  # type: ignore[arg-type]
+        result[feat] = ics
+    return result
+
+
+def compute_factor_correlation(
+    df: pd.DataFrame,
+    feature_cols: list[str],
+) -> tuple[pd.DataFrame, list[str]]:
+    """Compute feature correlation matrix and flag pairs with |r| > 0.8.
+
+    Returns (correlation matrix, list of warning strings).
+    """
+    valid = df[feature_cols].dropna()
+    corr = valid.corr()  # type: ignore[call-arg]
+    warnings: list[str] = []
+    for i in range(len(feature_cols)):
+        for j in range(i + 1, len(feature_cols)):
+            r = corr.iloc[i, j]
+            if abs(r) > 0.8:
+                warnings.append(
+                    f"  {feature_cols[i]} <-> {feature_cols[j]}: r={r:.3f}"
+                )
+    return corr, warnings
