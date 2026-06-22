@@ -74,7 +74,7 @@ def compute_ic_icir(
     ic = result.correlation  # type: ignore[assignment]
     p_value = result.pvalue   # type: ignore[assignment]
 
-    # ICIR: rolling sub-windows (quarterly ≈ 63 days, 1-month step)
+    # ICIR: rolling sub-windows (quarterly ~= 63 days, 1-month step)
     window = min(63, len(pred) // 3)
     step = max(21, window // 3)
     sub_ics: list[float] = []
@@ -132,7 +132,7 @@ def evaluate(
 
     clf_report = classification_report(
         y_test, y_pred_test,
-        target_names=["Down/Flat", "Up \u22650.2%"],
+        target_names=["Down/Flat", "Up >=0.2%"],
         digits=3,
     )
 
@@ -181,7 +181,7 @@ def evaluate(
 def print_report(report: dict[str, Any]) -> None:
     """Pretty-print an evaluation report."""
     print("\n" + "=" * 60)
-    print("\U0001f4ca  EVALUATION SUMMARY")
+    print("EVALUATION SUMMARY")
     print("=" * 60)
 
     print(f"  Train Accuracy:        {report['train_accuracy']:.3f}")
@@ -202,11 +202,11 @@ def print_report(report: dict[str, Any]) -> None:
     # Overfitting diagnosis
     gap = report["overfitting_gap"]
     if gap < 0.05:
-        print("\n  \u2705  Low overfitting — good generalisation.")
+        print("\n  [OK] Low overfitting -- good generalisation.")
     elif gap < 0.10:
-        print("\n  \u26a0\ufe0f   Moderate overfitting — consider tuning regularisation.")
+        print("\n  [WARN] Moderate overfitting -- consider tuning regularisation.")
     else:
-        print("\n  \u274c  High overfitting — model may be memorising training data.")
+        print("\n  [FAIL] High overfitting -- model may be memorising training data.")
 
     # IC diagnosis
     if ic:
@@ -214,21 +214,21 @@ def print_report(report: dict[str, Any]) -> None:
         icir = ic.get("icir", 0)
         if not np.isnan(rank_ic):
             if rank_ic > 0.05:
-                print("  \u2705  Rank IC > 0.05 — meaningful predictive signal.")
+                print("  [OK] Rank IC > 0.05 -- meaningful predictive signal.")
             elif rank_ic > 0:
-                print("  \u26a0\ufe0f   Rank IC > 0 but weak — marginal signal.")
+                print("  [WARN] Rank IC > 0 but weak -- marginal signal.")
             else:
-                print("  \u274c  Rank IC \u2264 0 — no directional signal.")
+                print("  [FAIL] Rank IC <= 0 -- no directional signal.")
         if not np.isnan(icir):
             if icir > 1.0:
-                print("  \u2705  ICIR > 1.0 — stable signal.")
+                print("  [OK] ICIR > 1.0 -- stable signal.")
             elif icir > 0.3:
-                print("  \u26a0\ufe0f   ICIR > 0.3 — modest stability.")
+                print("  [WARN] ICIR > 0.3 -- modest stability.")
             else:
-                print("  \u274c  ICIR < 0.3 — signal unstable across sub-periods.")
+                print("  [FAIL] ICIR < 0.3 -- signal unstable across sub-periods.")
 
     # Baselines
-    print("\n── Baselines ──")
+    print("\n-- Baselines --")
     for b in report["baselines"]:
         name = b["name"]
         acc = b["accuracy"]
@@ -238,23 +238,23 @@ def print_report(report: dict[str, Any]) -> None:
 
     # Class distribution
     cd = report["class_distribution_test"]
-    print("\n── Test Class Distribution ──")
+    print("\n-- Test Class Distribution --")
     print(f"  Down/Flat: {cd['down_flat']} samples ({1 - cd['up_pct']:.1%})")
-    print(f"  Up \u22650.2%:  {cd['up']} samples ({cd['up_pct']:.1%})")
+    print(f"  Up >=0.2%:  {cd['up']} samples ({cd['up_pct']:.1%})")
 
     # Classification report
-    print("\n── Classification Report (Test) ──")
+    print("\n-- Classification Report (Test) --")
     print(report["classification_report"])
 
     # Confusion matrix
     cm = report["confusion_matrix"]
-    print("── Confusion Matrix ──")
+    print("-- Confusion Matrix --")
     print("           Pred Down   Pred Up")
     print(f"  True Down    {cm['tn']:>5}      {cm['fp']:>5}")
     print(f"  True Up      {cm['fn']:>5}      {cm['tp']:>5}")
 
     # Feature importance
     if report["feature_importance"]:
-        print("\n── Feature Importance ──")
+        print("\n-- Feature Importance --")
         for feat, imp in report["feature_importance"].items():
             print(f"  {feat:<25}: {imp:.3f}")

@@ -55,20 +55,20 @@ def main(argv: list[str] | None = None) -> None:
         test_size=args.test_size,
     )
 
-    print(f"\U0001f4ca  Experiment: {settings.symbol}")
-    print(f"    Date range: {settings.start_date} - {settings.end_date}")
-    print(f"    Threshold : {settings.up_threshold:.3f}")
-    print(f"    Test size : {settings.test_size:.0%}")
+    print(f"Experiment: {settings.symbol}")
+    print(f"  Date range: {settings.start_date} - {settings.end_date}")
+    print(f"  Threshold : {settings.up_threshold:.3f}")
+    print(f"  Test size : {settings.test_size:.0%}")
 
     # 1. Load data
     df = load_data(settings)
-    print(f"    Raw rows  : {len(df)}")
+    print(f"  Raw rows  : {len(df)}")
 
     # 2. Features
     df = build_features(df)
-    print("🛠️   特征工程完成。")
+    print("[features] 特征工程完成。")
 
-    # 3. Labels (target bug fixed — last row dropped explicitly)
+    # 3. Labels (target bug fixed -- last row dropped explicitly)
     df = build_labels(df, threshold=settings.up_threshold)
 
     # Select feature columns and drop rows with NaN (early rows where rolling
@@ -86,22 +86,22 @@ def main(argv: list[str] | None = None) -> None:
     y_test = df.iloc[split_idx:]["target"]
     actual_returns_test = df.iloc[split_idx:]["future_return"].values
 
-    print(f"✂️   训练集: {len(X_train)} 行, 测试集: {len(X_test)} 行")
+    print(f"[split] 训练集: {len(X_train)} 行, 测试集: {len(X_test)} 行")
 
     # 5. Train
-    print("🚂  训练 XGBoost（时间序列交叉验证）…")
+    print("[train] 训练 XGBoost (时间序列交叉验证) ...")
     model, cv_stats = train_model(
         X_train, y_train,
         params=settings.xgb_params,
         cv_splits=settings.cv_splits,
     )
     print(
-        f"    CV Accuracy: {cv_stats['mean']:.3f} "
-        f"± {cv_stats['std'] * 2:.3f}"
+        f"  CV Accuracy: {cv_stats['mean']:.3f} "
+        f"+/- {cv_stats['std'] * 2:.3f}"
     )
 
     # 6. Evaluate
-    print("🔍  评估模型…")
+    print("[eval] 评估模型 ...")
 
     # Build persistence baseline: yesterday's actual direction
     prev_direction_test = df.iloc[split_idx:]["target"].shift(1).fillna(0).astype(int)
